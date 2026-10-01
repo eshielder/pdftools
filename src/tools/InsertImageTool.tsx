@@ -14,7 +14,7 @@ import PlacementPage, { type PlacementRect } from "./components/PlacementPage";
 import { Segmented } from "./components/Controls";
 
 const MAX_VIEWER_W = 720;
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+const IMAGE_ACCEPT = "image/*,.jpg,.jpeg,.png,.webp,.heic,.heif";
 
 type Rotation = "0" | "90" | "180" | "270";
 
@@ -162,15 +162,23 @@ export default function InsertImageTool() {
   };
 
   const addPdf = (incoming: File[]) => {
-    const file = incoming.find(isPdfFile);
-    if (!file) {
-      setError("That doesn't look like a PDF. Please choose a .pdf file.");
-      return;
-    }
     setError(null);
     setLoadingPdf(true);
     void (async () => {
       try {
+        let file: File | undefined;
+        for (const f of incoming) {
+          if (await isPdfFile(f)) {
+            file = f;
+            break;
+          }
+        }
+        if (!file) {
+          setError("That doesn't look like a PDF. Please choose a .pdf file.");
+          setLoadingPdf(false);
+          return;
+        }
+
         const bytes = await fileToUint8(file);
         const loaded = await loadPdf(bytes);
         if (doc) void doc.destroy();
@@ -180,14 +188,15 @@ export default function InsertImageTool() {
           const vp = page.getViewport({ scale: 1 });
           info.push({ width: vp.width, height: vp.height });
         }
-        setPdfFile({ name: file.name, size: bytes.byteLength, bytes });
+        setPdfFile({ name: file.name || "document.pdf", size: bytes.byteLength, bytes });
         setDoc(loaded);
         setPageCount(loaded.numPages);
         setPageInfo(info);
         setPlacements({});
         setActivePage(1);
         setResult(null);
-      } catch {
+      } catch (err) {
+        console.error("InsertImageTool load error", err);
         setError("We couldn't read that PDF. It may be corrupt or password-protected.");
       } finally {
         setLoadingPdf(false);
@@ -204,10 +213,11 @@ export default function InsertImageTool() {
       try {
         const prepared = await prepareImage(file);
         setImage(prepared);
-        setImageName(file.name);
+        setImageName(file.name || "image");
         setPlacements({});
         setPlaceMode(true);
       } catch (e) {
+        console.error("InsertImageTool image error", e);
         setError(e instanceof Error && e.message ? e.message : "We couldn't read that image.");
       } finally {
         setLoadingImage(false);
@@ -296,7 +306,7 @@ export default function InsertImageTool() {
       {!pdfFile ? (
         <>
           <DropZone
-            accept="application/pdf,.pdf"
+            accept="application/pdf,application/x-pdf,.pdf"
             label="Drop a PDF here, or click to browse"
             hint="The document you want to stamp an image onto"
             onFiles={addPdf}

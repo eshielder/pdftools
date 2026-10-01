@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileImage } from "lucide-react";
 import { imagesToPdf } from "../lib/pdf";
-import { prepareImage } from "../lib/image";
+import { isImageFile, prepareImage } from "../lib/image";
 import { downloadBlob, bytesToBlob } from "../lib/download";
 import { baseName, formatBytes } from "../lib/format";
 import DropZone from "./components/DropZone";
@@ -20,11 +20,7 @@ interface ImageFile {
 let uid = 0;
 const nextId = () => `img-${++uid}`;
 
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
-
-function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
-}
+const IMAGE_ACCEPT = "image/*,.jpg,.jpeg,.png,.webp,.heic,.heif";
 
 export default function ImageToPdfTool() {
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -49,15 +45,28 @@ export default function ImageToPdfTool() {
   const addFiles = useCallback((incoming: File[]) => {
     setError(null);
     setResult(null);
-    const valid = incoming.filter(isImageFile);
-    if (valid.length !== incoming.length) {
-      setError("Some files weren't images and were skipped. Supported: JPG, PNG and WebP.");
-    }
-    if (valid.length === 0) return;
-    setFiles((prev) => [
-      ...prev,
-      ...valid.map((file) => ({ id: nextId(), name: file.name, size: file.size, file })),
-    ]);
+    void (async () => {
+      try {
+        const checks = await Promise.all(
+          incoming.map(async (f) => ({ file: f, valid: await isImageFile(f) }))
+        );
+        const valid = checks.filter((c) => c.valid).map((c) => c.file);
+        if (valid.length !== incoming.length && valid.length > 0) {
+          setError("Some files weren't recognized images and were skipped. Supported: JPG, PNG and WebP.");
+        } else if (valid.length === 0 && incoming.length > 0) {
+          setError("None of the selected files could be recognized as images. Supported: JPG, PNG and WebP.");
+          return;
+        }
+        if (valid.length === 0) return;
+        setFiles((prev) => [
+          ...prev,
+          ...valid.map((file) => ({ id: nextId(), name: file.name || "image", size: file.size, file })),
+        ]);
+      } catch (err) {
+        console.error("ImageToPdfTool load error", err);
+        setError("Could not process one or more images on this device.");
+      }
+    })();
   }, []);
 
   const move = useCallback((id: string, dir: -1 | 1) => {

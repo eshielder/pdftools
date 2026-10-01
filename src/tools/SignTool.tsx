@@ -57,15 +57,23 @@ export default function SignTool() {
   };
 
   const addFile = (incoming: File[]) => {
-    const file = incoming.find(isPdfFile);
-    if (!file) {
-      setError("That doesn't look like a PDF. Please choose a .pdf file.");
-      return;
-    }
     setError(null);
     setLoading(true);
     void (async () => {
       try {
+        let file: File | undefined;
+        for (const f of incoming) {
+          if (await isPdfFile(f)) {
+            file = f;
+            break;
+          }
+        }
+        if (!file) {
+          setError("That doesn't look like a PDF. Please choose a .pdf file.");
+          setLoading(false);
+          return;
+        }
+
         const bytes = await fileToUint8(file);
         const loaded = await loadPdf(bytes);
         if (doc) void doc.destroy();
@@ -75,7 +83,7 @@ export default function SignTool() {
           const vp = page.getViewport({ scale: 1 });
           info.push({ width: vp.width, height: vp.height });
         }
-        setPdfFile({ name: file.name, size: bytes.byteLength, bytes });
+        setPdfFile({ name: file.name || "document.pdf", size: bytes.byteLength, bytes });
         setDoc(loaded);
         setPageCount(loaded.numPages);
         setPageInfo(info);
@@ -83,7 +91,8 @@ export default function SignTool() {
         setPlacements({});
         setActivePage(1);
         setResult(null);
-      } catch {
+      } catch (err) {
+        console.error("SignTool load error", err);
         setError("We couldn't read that PDF. It may be corrupt or password-protected.");
       } finally {
         setLoading(false);
@@ -171,7 +180,7 @@ export default function SignTool() {
   return (
     <div>
       <DropZone
-        accept="application/pdf,.pdf"
+        accept="application/pdf,application/x-pdf,.pdf"
         label="Drop a PDF here, or click to browse"
         hint="Then draw or type your signature and place it on a page"
         onFiles={addFile}

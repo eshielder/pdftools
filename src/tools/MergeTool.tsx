@@ -27,17 +27,31 @@ export default function MergeTool() {
 
   const addFiles = useCallback((incoming: File[]) => {
     setError(null);
-    const valid = incoming.filter(isPdfFile);
-    if (valid.length !== incoming.length) {
-      setError("Only PDF files can be merged. Non-PDF files were skipped.");
-    }
-    if (valid.length === 0) return;
-    void Promise.all(
-      valid.map(async (f): Promise<MergeFile> => {
-        const bytes = await fileToUint8(f);
-        return { id: nextId(), name: f.name, size: bytes.byteLength, bytes };
-      })
-    ).then((loaded) => setFiles((prev) => [...prev, ...loaded]));
+    void (async () => {
+      try {
+        const checks = await Promise.all(
+          incoming.map(async (f) => ({ file: f, valid: await isPdfFile(f) }))
+        );
+        const valid = checks.filter((c) => c.valid).map((c) => c.file);
+        if (valid.length !== incoming.length && valid.length > 0) {
+          setError("Only PDF files can be merged. Non-PDF files were skipped.");
+        } else if (valid.length === 0 && incoming.length > 0) {
+          setError("None of the selected files could be recognized as PDFs. Please choose .pdf files.");
+          return;
+        }
+        if (valid.length === 0) return;
+        const loaded = await Promise.all(
+          valid.map(async (f): Promise<MergeFile> => {
+            const bytes = await fileToUint8(f);
+            return { id: nextId(), name: f.name || "document.pdf", size: bytes.byteLength, bytes };
+          })
+        );
+        setFiles((prev) => [...prev, ...loaded]);
+      } catch (err) {
+        console.error("Failed to read PDF files", err);
+        setError("Could not read one or more files on this device.");
+      }
+    })();
   }, []);
 
   const move = useCallback((id: string, dir: -1 | 1) => {
@@ -93,7 +107,7 @@ export default function MergeTool() {
   return (
     <div>
       <DropZone
-        accept="application/pdf,.pdf"
+        accept="application/pdf,application/x-pdf,.pdf"
         multiple
         label="Drop PDF files here, or click to browse"
         hint="Select two or more PDFs to combine them into one document"

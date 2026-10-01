@@ -49,23 +49,32 @@ export default function PdfToImageTool() {
   };
 
   const addFile = (incoming: File[]) => {
-    const file = incoming.find(isPdfFile);
-    if (!file) {
-      setError("That doesn't look like a PDF. Please choose a .pdf file.");
-      return;
-    }
     setError(null);
     setLoading(true);
     void (async () => {
       try {
+        let file: File | undefined;
+        for (const f of incoming) {
+          if (await isPdfFile(f)) {
+            file = f;
+            break;
+          }
+        }
+        if (!file) {
+          setError("That doesn't look like a PDF. Please choose a .pdf file.");
+          setLoading(false);
+          return;
+        }
+
         const bytes = await fileToUint8(file);
         const loaded = await loadPdf(bytes);
         if (doc) void doc.destroy();
-        setPdfFile({ name: file.name, size: bytes.byteLength, bytes });
+        setPdfFile({ name: file.name || "document.pdf", size: bytes.byteLength, bytes });
         setDoc(loaded);
         setPageCount(loaded.numPages);
         setResult(null);
-      } catch {
+      } catch (err) {
+        console.error("PdfToImageTool load error", err);
         setError("We couldn't read that PDF. It may be corrupt or password-protected.");
       } finally {
         setLoading(false);
@@ -150,7 +159,7 @@ export default function PdfToImageTool() {
   return (
     <div>
       <DropZone
-        accept="application/pdf,.pdf"
+        accept="application/pdf,application/x-pdf,.pdf"
         label="Drop a PDF here, or click to browse"
         hint="We'll render each page as an image"
         onFiles={addFile}

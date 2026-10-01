@@ -22,21 +22,28 @@ export default function ProtectTool() {
   const [result, setResult] = useState<{ bytes: Uint8Array; name: string; size: number } | null>(null);
 
   const addFile = useCallback((incoming: File[]) => {
-    const file = incoming.find(isPdfFile);
-    if (!file) {
-      setError("That doesn't look like a PDF. Please choose a .pdf file.");
-      return;
-    }
     setError(null);
     setResult(null);
     void (async () => {
+      let file: File | undefined;
+      for (const f of incoming) {
+        if (await isPdfFile(f)) {
+          file = f;
+          break;
+        }
+      }
+      if (!file) {
+        setError("That doesn't look like a PDF. Please choose a .pdf file.");
+        return;
+      }
       setBusy(true);
       try {
         const bytes = await fileToUint8(file);
-        setFileName(file.name);
+        setFileName(file.name || "document.pdf");
         setBuffer(bytes);
-      } catch {
-        setError("We couldn't read that file.");
+      } catch (err) {
+        console.error("ProtectTool load error", err);
+        setError("We couldn't read that file. Please try again.");
       } finally {
         setBusy(false);
       }
@@ -115,7 +122,7 @@ export default function ProtectTool() {
   return (
     <div>
       <DropZone
-        accept="application/pdf,.pdf"
+        accept="application/pdf,application/x-pdf,.pdf"
         label="Drop a PDF here, or click to browse"
         hint="Choose the file you want to lock with a password"
         onFiles={addFile}

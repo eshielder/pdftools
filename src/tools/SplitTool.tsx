@@ -30,23 +30,30 @@ export default function SplitTool() {
   const [parts, setParts] = useState<SplitPart[] | null>(null);
 
   const addFile = useCallback((incoming: File[]) => {
-    const file = incoming.find(isPdfFile);
-    if (!file) {
-      setError("That doesn't look like a PDF. Please choose a .pdf file.");
-      return;
-    }
     setError(null);
     setParts(null);
     void (async () => {
+      let file: File | undefined;
+      for (const f of incoming) {
+        if (await isPdfFile(f)) {
+          file = f;
+          break;
+        }
+      }
+      if (!file) {
+        setError("That doesn't look like a PDF. Please choose a .pdf file.");
+        return;
+      }
       setBusy(true);
       try {
         const bytes = await fileToUint8(file);
         const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-        setFileName(file.name);
+        setFileName(file.name || "document.pdf");
         setBuffer(bytes);
         setPageCount(doc.getPageCount());
-      } catch {
-        setError("We couldn't read that PDF. It may be corrupted or unsupported.");
+      } catch (err) {
+        console.error("SplitTool load error", err);
+        setError("We couldn't read that PDF. It may be corrupted or password-protected.");
         setBuffer(null);
         setPageCount(0);
       } finally {
@@ -150,7 +157,7 @@ export default function SplitTool() {
   return (
     <div>
       <DropZone
-        accept="application/pdf,.pdf"
+        accept="application/pdf,application/x-pdf,.pdf"
         label="Drop a PDF here, or click to browse"
         hint="One file at a time — you'll pick which pages to extract"
         onFiles={addFile}
